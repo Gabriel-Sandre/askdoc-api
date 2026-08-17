@@ -1,0 +1,59 @@
+[project]
+name = "askdoc-api"
+version = "0.1.0"
+description = "API de perguntas e respostas sobre documentos (RAG) com busca híbrida, citações e rastreio de custo."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "aiosqlite>=0.20",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "python-multipart>=0.0.12",
+    "httpx>=0.27",
+    "numpy>=2.0",
+    "pypdf>=5.1",
+    "tenacity>=9.0",
+]
+
+[project.optional-dependencies]
+pgvector = ["pgvector>=0.3.6"]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+    "mypy>=1.13",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+# B008: `Depends(...)` / `Query(...)` no valor default é o idioma do FastAPI,
+# não o bug de mutable-default que a regra tenta pegar.
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# a conftest precisa definir variáveis de ambiente antes dos imports de `app`
+"tests/conftest.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = false
