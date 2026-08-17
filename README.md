@@ -5,7 +5,7 @@ API de perguntas e respostas sobre documentos privados (RAG), com **busca híbri
 Você envia seus documentos, faz perguntas em linguagem natural e recebe a resposta **com o offset exato de onde cada afirmação veio** — não um "segundo o documento X" genérico.
 
 ```bash
-git clone <url-do-repo> && cd askdoc-api
+git clone https://github.com/Gabriel-Sandre/askdoc-api.git && cd askdoc-api
 docker compose up --build
 ./scripts/demo.sh
 ```
