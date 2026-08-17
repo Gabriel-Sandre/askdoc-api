@@ -50,14 +50,27 @@ ADMIN_HEADERS = {"X-Admin-Token": "test-admin-token"}
 
 @pytest.fixture(autouse=True)
 async def fresh_database() -> AsyncIterator[None]:
-    """Schema zerado a cada teste: nenhum teste depende da ordem de execução."""
+    """Schema zerado a cada teste: nenhum teste depende da ordem de execução.
+
+    O `engine` é um singleton criado no import de `app.db`, mas cada teste roda
+    em um event loop novo. Conexões asyncpg ficam amarradas ao loop que as
+    abriu, então uma conexão reaproveitada do pool em outro teste estoura com
+    "Event loop is closed". Descartar o pool no teardown força cada teste a
+    abrir conexões no próprio loop.
+
+    Não aparece em SQLite — aiosqlite não amarra a conexão ao loop —, o que
+    torna o job contra Postgres o único lugar onde o problema é visível.
+    """
     async with engine.begin() as conn:
         if settings.pgvector_enabled:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     limiter.reset()
-    yield
+    try:
+        yield
+    finally:
+        await engine.dispose()
 
 
 @pytest.fixture
