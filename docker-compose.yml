@@ -1,0 +1,42 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: askdoc
+      POSTGRES_PASSWORD: askdoc
+      POSTGRES_DB: askdoc
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U askdoc -d askdoc"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://askdoc:askdoc@db:5432/askdoc
+      USE_PGVECTOR: "true"
+
+      # Padrão: roda sem nenhuma chave de API, com o provider offline.
+      # Para usar modelos reais, troque para openai/anthropic e passe a chave.
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-fake}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+      # fake = 256. Com text-embedding-3-small, use 1536.
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-256}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-dev-admin-token}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

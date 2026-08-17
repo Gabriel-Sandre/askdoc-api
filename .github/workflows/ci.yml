@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check app tests
+
+      - name: Testes
+        # Sem segredo nenhum: o provider fake torna a suíte reprodutível.
+        run: pytest -q
+
+  # Roda a mesma suíte contra Postgres + pgvector, que é o caminho de produção.
+  # Sem este job, o SQLite dos testes esconderia qualquer erro de SQL específico
+  # do Postgres (full-text search, operador de distância do pgvector).
+  test-postgres:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: askdoc
+          POSTGRES_PASSWORD: askdoc
+          POSTGRES_DB: askdoc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U askdoc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -e ".[dev,pgvector]"
+
+      - name: Testes contra Postgres com pgvector
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://askdoc:askdoc@localhost:5432/askdoc_test
+          TEST_USE_PGVECTOR: "true"
+        run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build da imagem
+        run: docker build -t askdoc-api:ci .
