@@ -141,6 +141,35 @@ async def test_busca_hibrida_usa_as_duas_estrategias(
     assert any(c["keyword_rank"] is not None for c in chunks)
 
 
+async def test_lexical_sobrevive_a_palavra_ausente_no_documento(
+    client: AsyncClient, api_key, handbook_text
+):
+    """Os termos da pergunta precisam ser combinados por OR, não por AND.
+
+    "girafa" não existe no manual. Com AND (o que `plainto_tsquery` faz por
+    padrão) a consulta inteira não casaria com nada e o braço lexical devolveria
+    vazio — degradando a busca híbrida para vetorial pura sem nenhum aviso.
+    """
+    await ingest(client, api_key, "manual.md", handbook_text)
+
+    body = (
+        await client.post(
+            "/v1/query",
+            json={
+                "question": "girafa limite diario de alimentacao",
+                "include_chunks": True,
+            },
+            headers=api_key,
+        )
+    ).json()
+
+    chunks = body["chunks"]
+    assert chunks
+    assert any(
+        c["keyword_rank"] is not None for c in chunks
+    ), "a busca lexical não pode zerar por causa de uma palavra ausente"
+
+
 async def test_filtro_por_document_ids(client: AsyncClient, api_key, handbook_text):
     manual_id = await ingest(client, api_key, "manual.md", handbook_text)
     outro_id = await ingest(

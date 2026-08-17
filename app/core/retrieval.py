@@ -163,12 +163,24 @@ async def _keyword_search_postgres(
 
     Config 'simple' (sem stemming) para casar com o índice. Trocar para
     'portuguese' liga stemming e stopwords em PT — basta mudar nos dois lugares.
+
+    Os termos são unidos por OR (`|`), não por AND. `plainto_tsquery` usaria
+    AND, e aí bastaria uma palavra da pergunta não existir no documento para a
+    consulta inteira não casar com nada — "Qual o limite diário?" viraria
+    `qual & limite & diario` e devolveria vazio. Na prática isso desligava o
+    braço lexical em quase toda pergunta em linguagem natural, e a busca
+    híbrida degradava silenciosamente para vetorial pura. Com OR, quem casa
+    mais termos sobe no `ts_rank` — que é o comportamento que o RRF espera, e
+    o mesmo do fallback em Python.
+
+    Os termos vêm de `tokenize`, que casa apenas `\\w+`, então não carregam
+    operadores de tsquery nem aspas.
     """
     terms = tokenize(query)
     if not terms:
         return []
 
-    tsquery = func.plainto_tsquery(text("'simple'"), " ".join(terms))
+    tsquery = func.to_tsquery(text("'simple'"), " | ".join(terms))
     tsvector = func.to_tsvector(text("'simple'"), Chunk.text)
     rank = func.ts_rank(tsvector, tsquery)
 
