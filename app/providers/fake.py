@@ -23,12 +23,14 @@ from app.providers.base import ChatProvider, ChatResult, EmbeddingProvider, Embe
 
 _WORD_RE = re.compile(r"\w+", re.UNICODE)
 _SENT_RE = re.compile(r"(?<=[.!?])\s+")
+# cabeçalho de bloco do contexto montado em core/rag.py: "[1] (documento: x)"
+_CONTEXT_MARKER_RE = re.compile(r"^\[(\d{1,2})\]\s*\(documento:")
 
 # stopwords PT/EN mais comuns: sem isso, "de/a/o/the" dominam a similaridade
 _STOPWORDS = {
     "a", "o", "e", "de", "da", "do", "das", "dos", "em", "no", "na", "nos", "nas",
     "um", "uma", "para", "por", "com", "que", "se", "ao", "as", "os", "the", "of",
-    "and", "to", "in", "is", "it", "for", "on", "as", "at", "an", "be", "this",
+    "and", "to", "in", "is", "it", "for", "on", "at", "an", "be", "this",
 }
 
 
@@ -64,7 +66,12 @@ class FakeEmbeddingProvider(EmbeddingProvider):
 
 class FakeChatProvider(ChatProvider):
     """Responde de forma extrativa: escolhe as frases do contexto que mais
-    cobrem os termos da pergunta. Sem alucinação, porque nada é gerado."""
+    cobrem os termos da pergunta. Sem alucinação, porque nada é gerado.
+
+    As frases saem com o marcador [n] do bloco de onde vieram — sem isso o
+    modo offline responderia sempre com `grounded=false` e citação vazia,
+    escondendo justamente a funcionalidade central da API.
+    """
 
     name = "fake"
 
@@ -74,9 +81,17 @@ class FakeChatProvider(ChatProvider):
         question, context = self._split_prompt(user)
         q_terms = set(tokenize(question))
 
-        scored: list[tuple[float, str]] = []
+        scored: list[tuple[float, str, int | None]] = []
+        marker: int | None = None
+
         for line in context.splitlines():
             stripped = line.strip()
+
+            header = _CONTEXT_MARKER_RE.match(stripped)
+            if header:
+                marker = int(header.group(1))
+                continue
+
             if len(stripped) < 25:
                 continue
             for sentence in _SENT_RE.split(stripped):
@@ -88,7 +103,7 @@ class FakeChatProvider(ChatProvider):
                     continue
                 overlap = len(q_terms & terms) / (len(q_terms) or 1)
                 if overlap > 0:
-                    scored.append((overlap, sentence))
+                    scored.append((overlap, sentence, marker))
 
         scored.sort(key=lambda item: item[0], reverse=True)
         if not scored:
@@ -97,7 +112,10 @@ class FakeChatProvider(ChatProvider):
                 usage=Usage(prompt_tokens=len(user) // 4),
             )
 
-        best = [sentence for _, sentence in scored[:3]]
+        best = [
+            f"{sentence} [{marker}]" if marker else sentence
+            for _, sentence, marker in scored[:3]
+        ]
         answer = " ".join(best)
         return ChatResult(
             text=answer,

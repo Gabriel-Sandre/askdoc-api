@@ -94,6 +94,33 @@ async def test_query_recupera_o_trecho_certo(client: AsyncClient, api_key, handb
     assert body["latency_ms"] >= 0
 
 
+async def test_resposta_offline_vem_citada_e_grounded(
+    client: AsyncClient, api_key, handbook_text
+):
+    """O provider offline precisa emitir os marcadores [n] do contexto.
+
+    Sem isso o demo do README — que é o primeiro contato de quem clona o
+    repositório — responderia sempre com `grounded=false` e citação vazia,
+    escondendo justamente a funcionalidade central da API.
+    """
+    await ingest(client, api_key, "manual.md", handbook_text)
+
+    body = (
+        await client.post(
+            "/v1/query",
+            json={"question": "Quantos dias de ferias remuneradas por ano?"},
+            headers=api_key,
+        )
+    ).json()
+
+    assert body["grounded"] is True
+    assert body["citations"], "a resposta offline deveria citar ao menos um trecho"
+
+    for citation in body["citations"]:
+        assert citation["char_end"] > citation["char_start"]
+        assert citation["excerpt"]
+
+
 async def test_busca_hibrida_usa_as_duas_estrategias(
     client: AsyncClient, api_key, handbook_text
 ):
